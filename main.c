@@ -69,12 +69,21 @@ PmodMAXSONAR leftSonar;
 // Car states
 typedef enum
 {
-  IDLE,
-  DRIVE,
-  NAVIGATE
-} State;
- 
-State state = IDLE; // Shared resource. Mutex driven.
+    LEFT,
+    RIGHT,
+    IDLE
+} Previous_Direction_T;
+
+typedef enum
+{
+    STOP,
+    GO,
+    INIT
+}Previous_State_T;
+
+
+Previous_State_T previous_state = INIT;
+Previous_Direction_T previous_direction = IDLE; // Shared resource. Mutex driven.
 // SemaphoreHandle_t state_mutex;
 
 
@@ -89,6 +98,8 @@ void DHB1_GPIO_init(XGpio *InstancePtr,
   InstancePtr->IsDual = 1;
   InstancePtr->IsReady = XIL_COMPONENT_IS_READY;
 }
+
+// int leftMotorSpeed = 
 
 MotorFeedback motor1Feedback; 
 
@@ -126,8 +137,8 @@ int main()
     u32 MotorFeedback_reg1;
     u32 MotorFeedback_reg2;
 
-    //   PWM_Set_Duty(XPAR_PMOD_DHB1_0_PWM_BASEADDR, PWM_PERIOD * 4, 0);
-    //   PWM_Set_Duty(XPAR_PMOD_DHB1_0_PWM_BASEADDR, PWM_PERIOD * 2, 1);
+    // PWM_Set_Duty(XPAR_PMOD_DHB1_0_PWM_BASEADDR, PWM_PERIOD * 4, 0);
+    // PWM_Set_Duty(XPAR_PMOD_DHB1_0_PWM_BASEADDR, PWM_PERIOD * 4, 1);
 
     *rgbLEDsTri = 0x0;
 	// Sonar example
@@ -135,7 +146,7 @@ int main()
 
     u32 dist1;
     // Driver foward for approx 15 seconds
-    DHB1_setDirs(&motor, 1, 1);
+    //DHB1_setDirs(&motor, 0, 0);
     DHB1_motorEnable(&motor);
     ///DHB1_setMotorSpeeds(&motor, 50, 50);
     //DHB1_turn(&motor, 0, 20);  
@@ -152,44 +163,61 @@ int main()
         if(*switchData & (1 << 0)){
 
 
-            // //xil_printf("left = %3d", dist1);
-            // if(dist1 < 10){
-            //     DHB1_setMotorSpeeds(&motor, 0, 0);
-            //     *rgbLEDsData = RGB_RED;
+            //xil_printf("left = %3d", dist1);
+            if(dist1 < 6){
+                DHB1_setMotorSpeeds(&motor, 0, 0);
+                *rgbLEDsData = RGB_RED;
+                previous_state = STOP;
 
-            // }
-            //else{
+
+            }
+            else{
 
                 *rgbLEDsData = RGB_GREEN;
-
-
+                // if(previous_state == STOP){
+                //     DHB1_setMotorSpeeds(&motor, 45, 45);
+                // }
+                previous_state = GO;
+                //DHB1_setMotorSpeeds(&motor, 80,80);
                if(XGpio_DiscreteRead(&LS1_GPIO, 2) == BOTH_SENSORS){
-                    DHB1_setMotorSpeeds(&motor, 18, 18);
-                   // xil_printf("BOTH");
+                    DHB1_setDirs(&motor,0, 0);
+                    DHB1_setMotorSpeeds(&motor, 55, 55);
+                    previous_direction = IDLE;
+                   xil_printf("BOTH");
                }
-
-            // if((XGpio_DiscreteRead(&LS1_GPIO, 2) & L_SENSOR) && (XGpio_DiscreteRead(&LS1_GPIO, 2) & R_SENSOR)){
-            //         DHB1_setMotorSpeeds(&motor, 50, 50);
-            //         xil_printf("BOTH");
-            //    }
 
                 else if (XGpio_DiscreteRead(&LS1_GPIO, 2) & L_SENSOR){
                         //xil_printf("left: \r");
-                        xil_printf("0x%80x",XGpio_DiscreteRead(&LS1_GPIO,2));
-                        xil_printf("\n");
+                        //xil_printf("0x%80x",XGpio_DiscreteRead(&LS1_GPIO,2));
+                        
 
-                        DHB1_turn(&motor, 1, 18);
-                    }
+                    previous_direction = LEFT;
+                    xil_printf("Previous Direction: LEFT");
+                    xil_printf("\n");
+                    DHB1_turn(&motor, 1, 50);
+                        
+                }
                 else if (XGpio_DiscreteRead(&LS1_GPIO, 2) & R_SENSOR){
                         //xil_printf("right: \r");
-                        xil_printf("0x%80x",XGpio_DiscreteRead(&LS1_GPIO,2));
-                        xil_printf("\n");
-
-                        DHB1_turn(&motor, 0, 18);
+                        //xil_printf("0x%80x",XGpio_DiscreteRead(&LS1_GPIO,2));
+                    xil_printf("Previous Direction: RIGHT");
+                    xil_printf("\n");
+                    previous_direction = RIGHT;
+                    DHB1_turn(&motor, 0, 50);
                 } 
                 else {
-                    DHB1_setMotorSpeeds(&motor,0,0);
-            }
+                    if(previous_direction = LEFT){
+                        DHB1_turn(&motor,0,50);
+                    }
+                    else if(previous_direction = RIGHT){
+                        DHB1_turn(&motor,1, 50);
+                    }
+                    else{
+                        DHB1_setMotorSpeeds(&motor, 0, 0);
+                    }
+                   
+
+                }
 
                 // else if (XGpio_DiscreteRead(&LS1_GPIO, 2) & L_SENSOR){
                 //     xil_printf("left: \r");
@@ -213,10 +241,7 @@ int main()
       
 
 
-            //}
-
- 
-        
+            }
         }
         else{
             *rgbLEDsData = 0x0;
@@ -234,8 +259,8 @@ int main()
         //     PWM_CTRL_REG_OFFSET);
         // PWM_period_reg = PWM_Get_Period(XPAR_PMOD_DHB1_0_PWM_BASEADDR);
         // PWM_duty_reg = PWM_Get_Duty(XPAR_PMOD_DHB1_0_PWM_BASEADDR, 0);
-        MotorFeedback_reg1 = MOTORFEEDBACK_mReadReg(XPAR_PMOD_DHB1_0_GPIO_BASEADDR,0x04 );
-        MotorFeedback_reg2 = MOTORFEEDBACK_mReadReg(XPAR_PMOD_DHB1_0_GPIO_BASEADDR,0x08 );
+        // MotorFeedback_reg1 = MOTORFEEDBACK_mReadReg(XPAR_PMOD_DHB1_0_GPIO_BASEADDR,0x04 );
+        // MotorFeedback_reg2 = MOTORFEEDBACK_mReadReg(XPAR_PMOD_DHB1_0_GPIO_BASEADDR,0x08 );
 
         // xil_printf("MOTOR 1 FEEDBACK: 0x%08x\r", MotorFeedback_reg1);
         // xil_printf("MOTOR 2 FEEDBACK: 0x%08x\r", MotorFeedback_reg2);
@@ -245,10 +270,10 @@ int main()
         // xil_printf("PWM Duty: 0x%08x\r", PWM_duty_reg);
 
         // // Motor data
-        m1 = XGpio_DiscreteRead(&DHB1_GPIO, M1_CHANNEL);
-        m2 = XGpio_DiscreteRead(&DHB1_GPIO, M2_CHANNEL);
+        // m1 = XGpio_DiscreteRead(&DHB1_GPIO, M1_CHANNEL);
+        // m2 = XGpio_DiscreteRead(&DHB1_GPIO, M2_CHANNEL);
         //MotorFeedback_getSpeeds(MotorFeedback *motorFeedback, int *motor_speed);
-        xil_printf("0x%08x, 0x%08x\r", m1, m2);
+        //xil_printf("0x%08x, 0x%08x\r", m1, m2);
         // delay_ms(3000);
         // count++;
 
